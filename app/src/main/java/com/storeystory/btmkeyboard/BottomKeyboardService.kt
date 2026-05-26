@@ -268,22 +268,28 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
             val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
             
             // Stick Navigation
-            if (x > 0.5f && lastStickX <= 0.5f) moveSelection(0, 1)
-            else if (x < -0.5f && lastStickX >= -0.5f) moveSelection(0, -1)
-            if (y > 0.5f && lastStickY <= 0.5f) moveSelection(1, 0)
-            else if (y < -0.5f && lastStickY >= -0.5f) moveSelection(-1, 0)
+            if (x > 0.5f && lastStickX <= 0.5f) { if (isCursorMode) sendCursorMove(KeyEvent.KEYCODE_DPAD_RIGHT) else moveSelection(0, 1) }
+            else if (x < -0.5f && lastStickX >= -0.5f) { if (isCursorMode) sendCursorMove(KeyEvent.KEYCODE_DPAD_LEFT) else moveSelection(0, -1) }
+            if (y > 0.5f && lastStickY <= 0.5f) { if (isCursorMode) sendCursorMove(KeyEvent.KEYCODE_DPAD_DOWN) else moveSelection(1, 0) }
+            else if (y < -0.5f && lastStickY >= -0.5f) { if (isCursorMode) sendCursorMove(KeyEvent.KEYCODE_DPAD_UP) else moveSelection(-1, 0) }
 
             // Hat/D-pad Axis Navigation
-            if (hx > 0.5f && lastHatX <= 0.5f) moveSelection(0, 1)
-            else if (hx < -0.5f && lastHatX >= -0.5f) moveSelection(0, -1)
-            if (hy > 0.5f && lastHatY <= 0.5f) moveSelection(1, 0)
-            else if (hy < -0.5f && lastHatY >= -0.5f) moveSelection(-1, 0)
+            if (hx > 0.5f && lastHatX <= 0.5f) { if (isCursorMode) sendCursorMove(KeyEvent.KEYCODE_DPAD_RIGHT) else moveSelection(0, 1) }
+            else if (hx < -0.5f && lastHatX >= -0.5f) { if (isCursorMode) sendCursorMove(KeyEvent.KEYCODE_DPAD_LEFT) else moveSelection(0, -1) }
+            if (hy > 0.5f && lastHatY <= 0.5f) { if (isCursorMode) sendCursorMove(KeyEvent.KEYCODE_DPAD_DOWN) else moveSelection(1, 0) }
+            else if (hy < -0.5f && lastHatY >= -0.5f) { if (isCursorMode) sendCursorMove(KeyEvent.KEYCODE_DPAD_UP) else moveSelection(-1, 0) }
             
             lastStickX = x; lastStickY = y
             lastHatX = hx; lastHatY = hy
             return true
         }
         return super.onGenericMotionEvent(event)
+    }
+
+    private fun sendCursorMove(keyCode: Int) {
+        val ic = currentInputConnection
+        ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
     }
 
     private fun moveSelection(rowDelta: Int, colDelta: Int) {
@@ -315,12 +321,11 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         }
 
         if (isCursorMode) {
-            val ic = currentInputConnection
             when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_UP -> { ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP)); ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP)); return true }
-                KeyEvent.KEYCODE_DPAD_DOWN -> { ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN)); ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_DOWN)); return true }
-                KeyEvent.KEYCODE_DPAD_LEFT -> { ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT)); ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT)); return true }
-                KeyEvent.KEYCODE_DPAD_RIGHT -> { ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT)); ic?.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT)); return true }
+                KeyEvent.KEYCODE_DPAD_UP -> { sendCursorMove(KeyEvent.KEYCODE_DPAD_UP); return true }
+                KeyEvent.KEYCODE_DPAD_DOWN -> { sendCursorMove(KeyEvent.KEYCODE_DPAD_DOWN); return true }
+                KeyEvent.KEYCODE_DPAD_LEFT -> { sendCursorMove(KeyEvent.KEYCODE_DPAD_LEFT); return true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { sendCursorMove(KeyEvent.KEYCODE_DPAD_RIGHT); return true }
             }
         }
 
