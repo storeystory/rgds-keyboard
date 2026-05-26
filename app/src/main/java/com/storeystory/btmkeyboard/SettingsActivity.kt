@@ -1,5 +1,6 @@
 package com.storeystory.btmkeyboard
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -13,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -22,14 +24,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-
-import android.content.Context
-
-import androidx.compose.foundation.isSystemInDarkTheme
-
-import androidx.compose.ui.graphics.toArgb
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,10 +35,10 @@ class SettingsActivity : ComponentActivity() {
             var theme by remember { mutableStateOf(KeyboardTheme.load(this)) }
             val context = LocalContext.current
             
-            val appThemeMode by remember { 
-                mutableStateOf(context.getSharedPreferences("kb_prefs", Context.MODE_PRIVATE).getString("app_theme", "System") ?: "System")
+            val appThemeModePref = remember { 
+                context.getSharedPreferences("kb_prefs", Context.MODE_PRIVATE).getString("app_theme", "System") ?: "System"
             }
-            var currentAppTheme by remember { mutableStateOf(appThemeMode) }
+            var currentAppTheme by remember { mutableStateOf(appThemeModePref) }
 
             val darkTheme = when (currentAppTheme) {
                 "Light" -> false
@@ -93,7 +90,7 @@ class SettingsActivity : ComponentActivity() {
                                 }) { Text("1. Enable") }
                                 
                                 Button(onClick = {
-                                    val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+                                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
                                     imm.showInputMethodPicker()
                                 }) { Text("2. Select") }
                             }
@@ -227,7 +224,7 @@ class SettingsActivity : ComponentActivity() {
                         try {
                             val parsedColor = Color(android.graphics.Color.parseColor(it))
                             onColorSelected(parsedColor)
-                        } catch (e: Exception) {}
+                        } catch (ignored: Exception) {}
                     }
                 },
                 label = { Text("Hex Code (#AARRGGBB)") },

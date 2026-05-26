@@ -12,7 +12,9 @@ import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.Display
 import android.view.Gravity
+import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -33,6 +35,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,6 +66,11 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
     private var vibrator: Vibrator? = null
     private var theme by mutableStateOf(KeyboardTheme())
 
+    private var lastStickX = 0f
+    private var lastStickY = 0f
+    private var lastHatX = 0f
+    private var lastHatY = 0f
+
     // Keyboard Layouts
     private val baseRows = listOf(
         listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
@@ -74,7 +83,7 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
         listOf("@", "#", "$", "%", "&", "-", "+", "(", ")", "/"),
         listOf("*", "\"", "'", ":", ";", "!", "?", "⌫"),
-        listOf("TAB", "ESC", "ABC", "SPACE", "ENTER")
+        listOf("TAB", "ABC", "SPACE", "SCREEN", "ENTER")
     )
 
     private val rows: List<List<String>>
@@ -87,14 +96,14 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         }
 
     // State
-    private var selectedRow by mutableStateOf(0)
-    private var selectedCol by mutableStateOf(0)
+    private var selectedRow by mutableIntStateOf(0)
+    private var selectedCol by mutableIntStateOf(0)
     private var isUpperCase by mutableStateOf(true)
     private var isCapsLock by mutableStateOf(false)
     private var isSymbolsMode by mutableStateOf(false)
     private var isCursorMode by mutableStateOf(false)
     private var connectionDebug by mutableStateOf("Ready")
-    private var lastSpaceTime = 0L
+    private var lastSpaceTime by mutableLongStateOf(0L)
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     override val lifecycle: Lifecycle get() = lifecycleRegistry
@@ -155,7 +164,7 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
 
     private fun hideOverlay() {
         overlayView?.let {
-            try { windowManager?.removeView(it) } catch (e: Exception) {}
+            try { windowManager?.removeView(it) } catch (ignored: Exception) {}
             overlayView = null
         }
     }
@@ -230,18 +239,75 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         }
     }
 
+    private fun switchScreen() {
+        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val displays = displayManager.displays
+        if (displays.size <= 1) return
+
+        val currentIndex = displays.indexOfFirst { it.displayId == currentDisplayId }
+        val nextIndex = (currentIndex + 1) % displays.size
+        currentDisplayId = displays[nextIndex].displayId
+
+        getSharedPreferences("kb_prefs", Context.MODE_PRIVATE).edit().putInt("display_id", currentDisplayId).apply()
+
+        hideOverlay()
+        showOverlay()
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if (overlayView == null) return false
+        
+        if (event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK &&
+            event.action == MotionEvent.ACTION_MOVE) {
+            
+            // Stick Axes
+            val x = event.getAxisValue(MotionEvent.AXIS_X)
+            val y = event.getAxisValue(MotionEvent.AXIS_Y)
+            // Hat Axes (often used for D-pad on handhelds)
+            val hx = event.getAxisValue(MotionEvent.AXIS_HAT_X)
+            val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
+            
+            // Stick Navigation
+            if (x > 0.5f && lastStickX <= 0.5f) moveSelection(0, 1)
+            else if (x < -0.5f && lastStickX >= -0.5f) moveSelection(0, -1)
+            if (y > 0.5f && lastStickY <= 0.5f) moveSelection(1, 0)
+            else if (y < -0.5f && lastStickY >= -0.5f) moveSelection(-1, 0)
+
+            // Hat/D-pad Axis Navigation
+            if (hx > 0.5f && lastHatX <= 0.5f) moveSelection(0, 1)
+            else if (hx < -0.5f && lastHatX >= -0.5f) moveSelection(0, -1)
+            if (hy > 0.5f && lastHatY <= 0.5f) moveSelection(1, 0)
+            else if (hy < -0.5f && lastHatY >= -0.5f) moveSelection(-1, 0)
+            
+            lastStickX = x; lastStickY = y
+            lastHatX = hx; lastHatY = hy
+            return true
+        }
+        return super.onGenericMotionEvent(event)
+    }
+
+    private fun moveSelection(rowDelta: Int, colDelta: Int) {
+        if (rowDelta != 0) {
+            selectedRow = if (selectedRow + rowDelta < 0) rows.size - 1 else if (selectedRow + rowDelta >= rows.size) 0 else selectedRow + rowDelta
+        }
+        if (colDelta != 0) {
+            selectedCol = if (selectedCol + colDelta < 0) rows[selectedRow].size - 1 else if (selectedCol + colDelta >= rows[selectedRow].size) 0 else selectedCol + colDelta
+        }
+        if (selectedCol >= rows[selectedRow].size) {
+            selectedCol = rows[selectedRow].size - 1
+        }
+        connectionDebug = "Pos: $selectedRow,$selectedCol"
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (overlayView == null) return false
         connectionDebug = "Key: $keyCode"
         
         if (keyCode == KeyEvent.KEYCODE_BUTTON_L2) {
-            if (event.repeatCount == 0) {
-                isCursorMode = !isCursorMode
-                vibrateStrong()
-            }
+            if (event.repeatCount == 0) { isCursorMode = !isCursorMode; vibrateStrong() }
             return true
         }
 
-        // Handle Backspace Repeat Delay
         if (keyCode == KeyEvent.KEYCODE_BUTTON_B || keyCode == KeyEvent.KEYCODE_BUTTON_L1) {
             if (event.repeatCount > 0 && event.repeatCount % 5 != 0) return true 
         } else if (event.repeatCount > 0) {
@@ -259,24 +325,11 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         }
 
         when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> {
-                selectedRow = if (selectedRow > 0) selectedRow - 1 else rows.size - 1
-                if (selectedCol >= rows[selectedRow].size) selectedCol = rows[selectedRow].size - 1
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                selectedRow = if (selectedRow < rows.size - 1) selectedRow + 1 else 0
-                if (selectedCol >= rows[selectedRow].size) selectedCol = rows[selectedRow].size - 1
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                selectedCol = if (selectedCol > 0) selectedCol - 1 else rows[selectedRow].size - 1
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                selectedCol = if (selectedCol < rows[selectedRow].size - 1) selectedCol + 1 else 0
-                return true
-            }
+            KeyEvent.KEYCODE_DPAD_UP -> { moveSelection(-1, 0); return true }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { moveSelection(1, 0); return true }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { moveSelection(0, -1); return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { moveSelection(0, 1); return true }
+            
             KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_R1 -> {
                 handleKey(rows[selectedRow][selectedCol])
                 return true
@@ -289,36 +342,24 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
             KeyEvent.KEYCODE_BUTTON_X -> {
                 val now = System.currentTimeMillis()
                 if (now - lastSpaceTime < 300) {
-                    val ic = currentInputConnection
-                    ic?.deleteSurroundingText(1, 0)
-                    handleKey(".")
-                    handleKey(" ")
+                    currentInputConnection?.deleteSurroundingText(1, 0)
+                    handleKey("."); handleKey(" ")
                     lastSpaceTime = 0
-                } else {
-                    handleKey(" ")
-                    lastSpaceTime = now
-                }
+                } else { handleKey(" "); lastSpaceTime = now }
                 return true
             }
             KeyEvent.KEYCODE_BUTTON_Y -> {
                 if (isSymbolsMode) isSymbolsMode = false else { isUpperCase = !isUpperCase; isCapsLock = false }
                 return true 
             }
-            KeyEvent.KEYCODE_BUTTON_THUMBR -> {
-                isSymbolsMode = !isSymbolsMode
-                vibrateStrong()
-                return true
-            }
-            // L3 for Enter
-            KeyEvent.KEYCODE_BUTTON_THUMBL -> {
-                handleKey("ENTER")
-                return true
-            }
+            KeyEvent.KEYCODE_BUTTON_THUMBR -> { isSymbolsMode = !isSymbolsMode; vibrateStrong(); return true }
+            KeyEvent.KEYCODE_BUTTON_THUMBL -> { handleKey("ENTER"); return true }
         }
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (overlayView == null) return false
         if (keyCode == KeyEvent.KEYCODE_BUTTON_L2) return true
         return super.onKeyUp(keyCode, event)
     }
@@ -385,17 +426,13 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
         when (key) {
             "SYM" -> isSymbolsMode = true
             "ABC" -> { isSymbolsMode = false; isUpperCase = true }
+            "SCREEN" -> switchScreen()
             "TAB" -> { ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_TAB)); ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_TAB)) }
             "ESC" -> { ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ESCAPE)); ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ESCAPE)) }
             "⌫" -> {
                 val before = ic.getTextBeforeCursor(1, 0)
-                if (before == null || before.isEmpty()) {
-                    requestHideSelf(0)
-                } else {
-                    ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
-                    ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
-                    updateAutoCaps()
-                }
+                if (before == null || before.isEmpty()) { requestHideSelf(0) }
+                else { ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)); ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL)); updateAutoCaps() }
             }
             "ENTER" -> { ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)); ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER)); if (!isCapsLock) isUpperCase = true }
             "SPACE", " " -> { ic.commitText(" ", 1); updateAutoCaps() }
