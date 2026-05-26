@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">btmKeyboard</string>
+    <string name="keyboard_name">Bottom Keyboard</string>
+    <string name="settings_name">Bottom Keyboard Settings</string>
+</resources>
