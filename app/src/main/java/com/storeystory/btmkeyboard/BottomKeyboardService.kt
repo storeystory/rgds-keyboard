@@ -75,14 +75,14 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
     private val baseRows = listOf(
         listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
         listOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
-        listOf("z", "x", "c", "v", "b", "n", "m", "⌫"),
+        listOf("z", "x", "c", "v", "b", "n", "m", ".", "⌫"),
         listOf("SYM", "SPACE", "ENTER")
     )
 
     private val symbolsRows = listOf(
         listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
         listOf("@", "#", "$", "%", "&", "-", "+", "(", ")", "/"),
-        listOf("*", "\"", "'", ":", ";", "!", "?", "⌫"),
+        listOf("*", "\"", "'", ":", ";", "!", "?", ".", "⌫"),
         listOf("TAB", "ABC", "SPACE", "SCREEN", "ENTER")
     )
 
@@ -138,6 +138,12 @@ class BottomKeyboardService : InputMethodService(), LifecycleOwner, ViewModelSto
     override fun onStartInputView(info: android.view.inputmethod.EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         updateAutoCaps()
+        showOverlay()
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        super.onFinishInputView(finishingInput)
+        hideOverlay()
     }
 
     override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
